@@ -141,3 +141,113 @@ document.querySelectorAll('form[data-form]').forEach((form) => {
     }
   });
 });
+
+const cartStorageKey = 'butcher-vanity.cart.v1';
+const cart = new Map();
+try {
+  const savedCart = JSON.parse(localStorage.getItem(cartStorageKey) || '[]');
+  savedCart.forEach(([name, item]) => {
+    if (item && Number.isFinite(item.price) && Number.isInteger(item.quantity) && item.quantity > 0) cart.set(name, item);
+  });
+} catch { /* Ignore invalid or unavailable browser storage. */ }
+const won = (amount) => `₩${amount.toLocaleString('ko-KR')}`;
+function renderCart() {
+  const list = document.querySelector('.cart-list');
+  if (!list) return;
+  list.replaceChildren();
+  let count = 0;
+  let total = 0;
+  for (const [name, item] of cart) {
+    count += item.quantity;
+    total += item.price * item.quantity;
+    const row = document.createElement('li');
+    row.className = 'cart-item';
+    row.innerHTML = `<span>${name}<small>× ${item.quantity}</small></span><div class="cart-item-actions"><button type="button" data-cart-action="minus" data-name="${name}" aria-label="${name} 수량 줄이기">−</button><button type="button" data-cart-action="plus" data-name="${name}" aria-label="${name} 수량 늘리기">＋</button><b>${won(item.price * item.quantity)}</b><button type="button" class="cart-remove" data-cart-action="remove" data-name="${name}">삭제</button></div>`;
+    list.append(row);
+  }
+  if (!count) {
+    const empty = document.createElement('li');
+    empty.className = 'cart-empty';
+    empty.textContent = '아직 담긴 메뉴가 없습니다.';
+    list.append(empty);
+  }
+  document.querySelector('.cart-count').textContent = count;
+  document.querySelector('.cart-total b').textContent = won(total);
+  try { localStorage.setItem(cartStorageKey, JSON.stringify([...cart])); } catch { /* Cart still works for this visit. */ }
+}
+
+document.querySelectorAll('.add-to-cart,[data-add]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const name = button.dataset.name || button.dataset.add;
+    const price = Number(button.dataset.price);
+    const item = cart.get(name) || { price, quantity: 0 };
+    item.quantity += 1;
+    cart.set(name, item);
+    renderCart();
+    const message = document.querySelector('.order-message');
+    if (message) message.textContent = `${name} 메뉴를 담았습니다.`;
+  });
+});
+
+document.querySelector('.cart-list')?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-cart-action]');
+  if (!button) return;
+  const item = cart.get(button.dataset.name);
+  if (!item) return;
+  if (button.dataset.cartAction === 'remove') cart.delete(button.dataset.name);
+  else if (button.dataset.cartAction === 'minus') {
+    item.quantity -= 1;
+    if (item.quantity <= 0) cart.delete(button.dataset.name);
+  } else item.quantity += 1;
+  renderCart();
+});
+
+document.querySelector('.clear-cart')?.addEventListener('click', () => {
+  cart.clear();
+  renderCart();
+  const message = document.querySelector('.order-message');
+  if (message) message.textContent = '장바구니를 비웠습니다.';
+});
+
+document.querySelector('.checkout-button')?.addEventListener('click', () => {
+  const message = document.querySelector('.order-message');
+  message.textContent = cart.size ? '주문 요약을 확인했습니다. 데모이므로 결제는 진행되지 않습니다.' : '먼저 메뉴를 장바구니에 담아주세요.';
+});
+
+document.querySelector('.store-search')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const query = document.querySelector('#store-query').value.trim().toLowerCase();
+  const cards = [...document.querySelectorAll('.store-results article')];
+  const matches = cards.filter((card) => !query || card.textContent.toLowerCase().includes(query));
+  cards.forEach((card) => { card.hidden = !matches.includes(card); });
+  const results = document.querySelector('.store-results');
+  let empty = results.querySelector('.store-no-results');
+  if (!matches.length) {
+    if (!empty) {
+      empty = document.createElement('p');
+      empty.className = 'store-no-results';
+      empty.textContent = '검색 결과가 없습니다. 지역을 바꿔 다시 검색해보세요.';
+      results.append(empty);
+    }
+  } else empty?.remove();
+});
+
+const savedMerchKey = 'butcher-vanity.saved-merch.v1';
+let savedMerch = new Set();
+try { savedMerch = new Set(JSON.parse(localStorage.getItem(savedMerchKey) || '[]')); } catch { /* Start empty. */ }
+document.querySelectorAll('.merch-interest').forEach((button) => {
+  const name = button.closest('.merch-card').querySelector('h2').textContent;
+  if (savedMerch.has(name)) {
+    button.classList.add('is-saved');
+    button.textContent = '관심 상품에 저장됨 ♥';
+  }
+  button.addEventListener('click', () => {
+    if (savedMerch.has(name)) savedMerch.delete(name);
+    else savedMerch.add(name);
+    button.classList.toggle('is-saved', savedMerch.has(name));
+    button.textContent = savedMerch.has(name) ? '관심 상품에 저장됨 ♥' : '관심 상품으로 저장 ♡';
+    try { localStorage.setItem(savedMerchKey, JSON.stringify([...savedMerch])); } catch { /* Toggle remains active for this visit. */ }
+  });
+});
+renderCart();
+
